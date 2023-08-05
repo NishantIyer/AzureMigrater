@@ -30,7 +30,6 @@ class clsOCIConsume:
             cursor = initial_cursor
             while True:
                 get_response = client.get_messages(stream_id, cursor, limit=10)
-                # No messages to process. return.
                 if not get_response.data:
                     return
 
@@ -40,10 +39,8 @@ class clsOCIConsume:
                     print("{}: {}".format(b64decode(message.key.encode()).decode(),
                                           b64decode(message.value.encode()).decode()))
 
-                # get_messages is a throttled method; clients should retrieve sufficiently large message
-                # batches, as to avoid too many http requests.
+                
                 time.sleep(1)
-                # use the next-cursor for iteration
                 cursor = get_response.headers["opc-next-cursor"]
 
             return 0
@@ -63,7 +60,6 @@ class clsOCIConsume:
                                                lifecycle_state=oci.streaming.models.StreamSummary.LIFECYCLE_STATE_ACTIVE)
 
             if list_streams.data:
-                # If we find an active stream with the correct name, we'll use it.
                 print("An active stream {} has been found".format(stream_name))
                 sid = list_streams.data[0].id
                 return self.get_stream(sac_composite.client, sid)
@@ -71,11 +67,9 @@ class clsOCIConsume:
             print(" No Active stream  {} has been found; Creating it now. ".format(stream_name))
             print(" Creating stream {} with {} partitions.".format(stream_name, partition))
 
-            # Create stream_details object that need to be passed while creating stream.
             stream_details = oci.streaming.models.CreateStreamDetails(name=stream_name, partitions=partition,
                                                                       compartment_id=compartment, retention_in_hours=24)
 
-            # Since stream creation is asynchronous; we need to wait for the stream to become active.
             response = sac_composite.create_stream_and_wait_for_state(stream_details, wait_for_states=[oci.streaming.models.StreamSummary.LIFECYCLE_STATE_ACTIVE])
             return response
         except Exception as e:
@@ -90,26 +84,21 @@ class clsOCIConsume:
             # Load the default configuration
             config = from_file(file_location="~/.oci/config.poc")
 
-            # Create a StreamAdminClientCompositeOperations for composite operations.
+            
             stream_admin_client = oci.streaming.StreamAdminClient(config)
             stream_admin_client_composite = oci.streaming.StreamAdminClientCompositeOperations(stream_admin_client)
 
-            # We  will reuse a stream if its already created.
-            # This will utilize list_streams() to determine if a stream exists and return it, or create a new one.
+            
             stream = self.get_or_create_stream(stream_admin_client, compartment, STREAM_NAME,
                                           PARTITIONS, stream_admin_client_composite).data
 
             print(" Created Stream {} with id : {}".format(stream.name, stream.id))
 
-            # Streams are assigned a specific endpoint url based on where they are provisioned.
-            # Create a stream client using the provided message endpoint.
+            
             stream_client = oci.streaming.StreamClient(config, service_endpoint=stream.messages_endpoint)
             s_id = stream.id
 
-            # Use a cursor for getting messages; each get_messages call will return a next-cursor for iteration.
-            # There are a couple kinds of cursors.
-            # A cursor can be created at a given partition/offset.
-            # This gives explicit offset management control to the consumer.
+            
 
             print("Starting a simple message loop with a partition cursor")
             partition_cursor = self.get_cursor_by_partition(stream_client, s_id, partition="0")
